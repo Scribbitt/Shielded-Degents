@@ -1,0 +1,8 @@
+{
+  "network": "signet",
+  "platformUrl": "https://platform.example.invalid",
+  "esploraUrl": "https://mempool.space/signet/api",
+  "artBase": "platform",
+  "pieceName": "Shielded Degent",
+  "pollMs": 15000
+}

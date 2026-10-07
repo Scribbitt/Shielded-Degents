@@ -1,0 +1,28 @@
+{
+  "circuit": "holder",
+  "started": "2026-10-07T13:11:14.874Z",
+  "r1csSha256": "b5b938cccc0f0879c028d2d07eb50699af5be9a8bd559cc70f0376bbf90ae6ea",
+  "ptau": "ppot_0080_14.ptau (PSE Perpetual Powers of Tau)",
+  "ptauSha256": "3ca1149e9349b22b0ee0649399cfb787677129b7b1189d1899fc0d615d9583db",
+  "contributions": [
+    {
+      "n": 1,
+      "name": "shielded-degents dev (NOT FOR MAINNET)",
+      "contributionHash": "b015aa55cec0c75a8a4bf4e0db8ea183f167a726fe895455b4a90b4f748555bc1f3b11820aa701032c13fb50b8d95e97e7e5e59759ff91ff147252f023c5d716",
+      "zkey": "0001.zkey",
+      "sha256": "dfe3aedc5b1ec82e0f726f631f4c4cee6275d05f81606111556eb8ff972a06f9",
+      "at": "2026-10-07T13:11:21.344Z"
+    }
+  ],
+  "beacon": {
+    "height": 970341,
+    "blockHash": "000000000000000000012f973276ad827a97fed1b4006ccf6b2ffa4953ff644f",
+    "api": "https://mempool.space/api",
+    "iterationsExp": 10
+  },
+  "final": {
+    "zkeySha256": "b45db0db1b67a236c1b2f9d8543a638ae6d6ccb62e6199d59861c64aad5c28e8",
+    "vkeyHash": "486bc7f24f47f4d20550ba92bb558843f211143945bba77ef6d47253285dfbf8",
+    "finished": "2026-10-07T13:11:28.322Z"
+  }
+}

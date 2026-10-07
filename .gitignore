@@ -1,0 +1,11 @@
+node_modules/
+.ptau/
+vendor/shielded-ordinals/node_modules/
+vendor/shielded-ordinals/build/
+zk/dev-ceremony/*/0*.zkey
+.cache*/
+.regtest/
+*.tmp
+.env
+secrets/
+apps/web/dist/

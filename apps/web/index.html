@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="color-scheme" content="dark light" />
+  <meta name="description" content="Shielded Degents: public art on Bitcoin, private owners. Mint, hold, send and trade from a shielded vault only you can open." />
+  <title>Shielded Degents</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Cpath d='M20 3l14 6v10c0 9-6 15-14 18C12 34 6 28 6 19V9z' fill='%232efc86'/%3E%3Ccircle cx='15' cy='17' r='3' fill='%230b0b0d'/%3E%3Ccircle cx='25' cy='17' r='3' fill='%230b0b0d'/%3E%3C/svg%3E" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" />
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <div id="app"><p class="loading">Loading the collection…</p></div>
+  <div id="busy" hidden><div class="busy-card" role="status" aria-live="polite"><span class="spinner" aria-hidden="true"></span><span id="busy-text"></span></div></div>
+  <div id="toasts" aria-live="polite"></div>
+  <script type="module" src="./app.js"></script>
+</body>
+</html>

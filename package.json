@@ -1,0 +1,37 @@
+{
+  "name": "shielded-degents",
+  "private": true,
+  "type": "module",
+  "description": "Shielded Degents: private ownership of Bitcoin ordinals for the Degent ecosystem (SHORD v1 compatible)",
+  "license": "MIT",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "test": "node --test packages/sdk/test/*.test.mjs",
+    "test:e2e": "node test/e2e-regtest.mjs && node test/e2e-platform.mjs && node test/e2e-client.mjs && node test/e2e-launch.mjs",
+    "test:ui": "node test/ui-smoke.mjs",
+    "test:all": "npm test && npm run test:e2e",
+    "dev": "node scripts/dev-stack.mjs",
+    "build:web": "node apps/web/build.mjs",
+    "platform": "node services/platform/server.mjs"
+  },
+  "dependencies": {
+    "@bitcoinerlab/secp256k1": "^2.0.0",
+    "@noble/ciphers": "^2.4.0",
+    "@noble/curves": "^2.4.0",
+    "@noble/hashes": "^2.4.0",
+    "@scure/base": "^2.4.0",
+    "@scure/btc-signer": "^1.8.1",
+    "bitcoinjs-lib": "^6.1.8",
+    "micro-ordinals": "^0.2.2",
+    "poseidon-lite": "^0.3.0",
+    "sats-connect": "^4.2.1",
+    "snarkjs": "^0.7.6",
+    "tiny-secp256k1": "^2.2.4"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.12",
+    "puppeteer-core": "^25.12.0"
+  }
+}
