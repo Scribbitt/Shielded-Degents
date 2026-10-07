@@ -7,7 +7,8 @@
 //   node tools/launch.mjs config      --network signet --secrets secrets/signet --art launch/signet/art --out launch/signet/config.json
 //   node tools/launch.mjs rules       --config launch/config.json --out launch/rules.json [--allow-dev-key]
 //   node tools/launch.mjs commit      --rules launch/rules.json --network mainnet --fee-rate 5 [--grandparent <id>]
-//   node tools/launch.mjs reveal      --plan launch/parent-plan.json --commit <txid>:<vout> [--grandparent-utxo <txid>:<vout>:<value> --grandparent-key <file>]
+//   node tools/launch.mjs reveal      --plan launch/parent-plan.json --commit <txid>:<vout>[:<value>] [--grandparent-utxo <txid>:<vout>:<value> --grandparent-key <file>]
+//   node tools/launch.mjs pay         --api https://mempool.space/signet/api --network signet --wallet-key secrets/signet/wallet.json --to <address> --amount <sats> --fee-rate 2
 //   node tools/launch.mjs broadcast   --api https://mempool.space/signet/api --hex <hex>
 //   node tools/launch.mjs confirmed   --api https://mempool.space/signet/api --txid <reveal txid>
 //   node tools/launch.mjs park        --network mainnet --parent <txid>:<vout>:<value> --wallet-key secrets/wallet.json --fee-coin <txid>:<vout>:<value> --fee-rate 5
@@ -120,6 +121,43 @@ Put gate.xonly / lock.xonly in launch/config.json as gateKey / lockKey.`);
     console.log(JSON.stringify(cfg, null, 2) + `\n\nwritten to ${flag('--out')}. Edit prices / payouts if needed, then: rules --config ${flag('--out')} --out <rules.json>`);
   },
 
+  // Pay an exact amount from a key-path P2TR key (the hot wallet) using an esplora API for coins and
+  // broadcast: how the commit gets its exact amount when the coins came from faucets.
+  async pay() {
+    const api = need('--api').replace(/\/+$/, '');
+    const network = need('--network');
+    const priv = Buffer.from(readKey(need('--wallet-key')), 'hex');
+    const amount = Number(need('--amount'));
+    const feeRate = Number(need('--fee-rate'));
+    const pay = btc.p2tr(schnorr.getPublicKey(priv), undefined, NETWORKS[network]);
+    const toScript = btc.OutScript.encode(btc.Address(NETWORKS[network]).decode(need('--to')));
+    const coins = (await (await fetch(`${api}/address/${pay.address}/utxo`)).json()).sort((a, b) => b.value - a.value);
+    const exclude = new Set((flag('--exclude', '') || '').split(',').filter(Boolean));
+    const usable = coins.filter((c) => !exclude.has(`${c.txid}:${c.vout}`));
+    const build = (n, fee) => {
+      const tx = new btc.Transaction();
+      for (const c of usable.slice(0, n)) tx.addInput({ txid: c.txid, index: c.vout, witnessUtxo: { script: pay.script, amount: BigInt(c.value) }, tapInternalKey: pay.tapInternalKey });
+      tx.addOutput({ script: toScript, amount: BigInt(amount) });
+      const change = usable.slice(0, n).reduce((s, c) => s + c.value, 0) - amount - fee;
+      if (change < 0) return null;
+      if (change >= 330) tx.addOutput({ script: pay.script, amount: BigInt(change) });
+      tx.sign(priv);
+      tx.finalize();
+      return tx;
+    };
+    for (let n = 1; n <= usable.length; n++) {
+      const dry = build(n, 0);
+      if (!dry) continue;
+      const tx = build(n, Math.ceil((dry.vsize + 1) * feeRate));
+      if (!tx) continue;
+      const r = await fetch(`${api}/tx`, { method: 'POST', body: hex.encode(tx.extract()) });
+      const t = await r.text();
+      if (!r.ok) throw new Error('rejected: ' + t);
+      return console.log(`paid ${amount} sats to ${flag('--to')}: ${t.trim()}:0`);
+    }
+    throw new Error(`not enough coins at ${pay.address}: ${usable.reduce((s, c) => s + c.value, 0)} sats`);
+  },
+
   async broadcast() {
     const api = need('--api').replace(/\/+$/, '');
     const r = await fetch(`${api}/tx`, { method: 'POST', body: need('--hex') });
@@ -174,12 +212,17 @@ Put gate.xonly / lock.xonly in launch/config.json as gateKey / lockKey.`);
       gp = { ...u, priv: Buffer.from(readKey(need('--grandparent-key')), 'hex') };
       outputs.push({ script: btc.p2tr(schnorr.getPublicKey(gp.priv), undefined, NETWORKS[network]).script, value: u.value });
     }
-    outputs.push({ script: toScript, value: plan.parentValue });
-    const r = revealTx({ network, plan: p, revealPriv, commit: { ...c, value: plan.amount }, parent: gp, outputs });
+    // --commit <txid>:<vout>:<value> when the payment was not the exact amount: the parent carries what
+    // is left after the planned fee (its value is not part of the rules)
+    const commitValue = c.value ?? plan.amount;
+    const parentValue = commitValue - (plan.amount - plan.parentValue);
+    if (parentValue < 546) throw new Error(`the commit coin (${commitValue} sats) is too small: it needs at least ${plan.amount - plan.parentValue + 546}`);
+    outputs.push({ script: toScript, value: parentValue });
+    const r = revealTx({ network, plan: p, revealPriv, commit: { ...c, value: commitValue }, parent: gp, outputs });
     const parentVout = gp ? 1 : 0;
     console.log(`reveal ${r.txid} (${r.vsize} vB)\n\n${r.hex}\n\nBroadcast it, then start the platform with:
   RULES_INSCRIPTION_ID=${r.txid}i0
-  PARENT_OUTPOINT=${r.txid}:${parentVout}:${plan.parentValue}
+  PARENT_OUTPOINT=${r.txid}:${parentVout}:${parentValue}
   RULES_BLOCK=<hash of the block it confirms in>   START_HEIGHT=<that block's height>`);
   },
 
