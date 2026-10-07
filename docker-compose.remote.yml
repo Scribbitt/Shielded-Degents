@@ -43,7 +43,7 @@ services:
       - ${LAUNCH_DIR:?}:/launch:ro
       - platform-state:/state
     ports:
-      - "5030:5030"
+      - "${PLATFORM_PORT:-5030}:5030"
 
   web:
     build: { context: ., dockerfile: docker/stack.Dockerfile }
@@ -56,7 +56,7 @@ services:
       PUBLIC_ESPLORA_URL: ${MEMPOOL_API}
       PORT: "8790"
     ports:
-      - "8790:8790"
+      - "${WEB_PORT:-8790}:8790"
 
 volumes:
   platform-state:

@@ -53,7 +53,7 @@ node tools/launch.mjs confirmed --api $API --txid <reveal txid>             # af
 docker compose -f docker-compose.remote.yml --env-file docker/signet.env up --build
 ```
 
-Then open http://localhost:8790, create a vault, connect Unisat or Xverse set to signet, and mint.
+Then open http://localhost:8791 (signet uses 8791/5031, so the regtest stack can stay up on 8790), create a vault, connect Unisat or Xverse set to signet, and mint.
 Blocks take about 10 minutes, so each action shows up after the next block. Relay batches go out
 every ~2 minutes on signet (`BATCH_MS`).
 
