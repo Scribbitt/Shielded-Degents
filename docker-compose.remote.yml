@@ -36,6 +36,7 @@ services:
       STATE_FILE: /state/platform-state.json
       CACHE_DIR: /state/cache
       SYNC_MS: "15000"
+      GATE_POOL: ${GATE_POOL:-5}
       BATCH_MS: ${BATCH_MS:-600000}
       CORS_ORIGIN: ${CORS_ORIGIN:-*}
     volumes:
