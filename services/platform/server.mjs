@@ -11,7 +11,9 @@
 //
 // Config (env):
 //   NETWORK=mainnet|signet|regtest
-//   BITCOIN_RPC=http://user:pass@127.0.0.1:8332 [BITCOIN_RPC_COOKIE=...]   or   MEMPOOL_API=https://...
+//   BITCOIN_RPC=http://user:pass@127.0.0.1:8332 [BITCOIN_RPC_COOKIE=...]   blocks (+ wallet, if no API)
+//   MEMPOOL_API=https://mempool.space/signet/api   hot-wallet coins, fees, broadcast (+ blocks, if no RPC)
+//   Both set = blocks from the node (e.g. GetBlock through docker/btc-proxy), wallet I/O from the API.
 //   RULES_INSCRIPTION_ID=<parent>i0  RULES_BLOCK=<hash of its block>  START_HEIGHT=<height>
 //   SPEND_VKEY=zk/.../vkey.json   (must match rules.spendVkeyHash)
 //   GATE_KEY_HEX / LOCK_KEY_HEX / WALLET_KEY_HEX   (or *_FILE pointing at {"priv":"<hex>"})
@@ -83,7 +85,9 @@ export async function startPlatform(cfg = {}) {
   const rules = await loadRules({ source, rulesInscriptionId: c.rulesInscriptionId, rulesBlock: c.rulesBlock });
   if (rules.spendVkeyHash && vkeyHash(c.spendVkey) !== rules.spendVkeyHash) throw new Error('SPEND_VKEY is not the key the parent pins');
   const chain = follower({ network: c.network, source, cacheDir: c.cacheDir, rulesInscriptionId: c.rulesInscriptionId, rules, vkey: c.spendVkey, startHeight: c.startHeight });
-  const io = chainIO({ rpc: c.rpc, rpcCookie: c.rpcCookie, api: c.api });
+  // blocks come from BITCOIN_RPC when set (your node, or a hosted node through btc-proxy), else the API;
+  // the hot wallet's coins + broadcast use the API when set: hosted nodes refuse wallet calls
+  const io = chainIO(c.api ? { api: c.api } : { rpc: c.rpc, rpcCookie: c.rpcCookie });
   const signer = new PlatformSigner({ rules, network: NET, gatePriv: c.gatePriv, lockPriv: c.lockPriv });
   const wallet = new HotWallet({ priv: c.walletPriv, network: NET, io });
   if (saved.parent) wallet.protected.add(`${saved.parent.txid}:${saved.parent.vout}`);

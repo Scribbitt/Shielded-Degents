@@ -16,6 +16,11 @@ npm install
 npm run dev        # regtest node + launched collection + platform + web vault on http://localhost:8790
 ```
 
+Or in Docker, with nothing installed but Docker: `docker compose up --build` (same stack, same URL).
+
+On signet or mainnet **without running a node** (GetBlock through `btc-proxy` + mempool.space):
+see [docs/REMOTE.md](docs/REMOTE.md).
+
 In the web vault: create a vault, then *Connect wallet → Dev wallet (regtest)*. The dev wallet funds
 itself from the faucet. Then mint, send, list, buy, cancel and withdraw. Blocks are mined whenever
 something is waiting.
@@ -24,7 +29,8 @@ something is waiting.
 
 ```bash
 npm test             # offline: SDK envelopes judged by the reference indexer
-npm run test:e2e     # regtest: protocol, platform over HTTP, client, launch tool (about 40 s)
+npm run test:e2e     # regtest: protocol, platform over HTTP, client, launch tool, no-local-node mode (about 50 s)
+npm run test:proxy   # the real Caddy btc-proxy in front of a fake GetBlock (needs docker)
 npm run test:ui      # headless Chrome against `npm run dev`: two users mint, list, buy, withdraw
 ```
 

@@ -9,3 +9,5 @@ zk/dev-ceremony/*/0*.zkey
 .env
 secrets/
 apps/web/dist/
+docker/*.env
+launch/

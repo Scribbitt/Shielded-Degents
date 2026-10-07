@@ -9,7 +9,8 @@
   },
   "scripts": {
     "test": "node --test packages/sdk/test/*.test.mjs",
-    "test:e2e": "node test/e2e-regtest.mjs && node test/e2e-platform.mjs && node test/e2e-client.mjs && node test/e2e-launch.mjs",
+    "test:e2e": "node test/e2e-regtest.mjs && node test/e2e-platform.mjs && node test/e2e-client.mjs && node test/e2e-launch.mjs && node test/e2e-remote.mjs",
+    "test:proxy": "node test/proxy-check.mjs",
     "test:ui": "node test/ui-smoke.mjs",
     "test:all": "npm test && npm run test:e2e",
     "dev": "node scripts/dev-stack.mjs",

@@ -4,6 +4,7 @@
 //   automatically whenever something is waiting in the mempool.
 //
 //   npm run dev        (Ctrl+C stops everything; state is thrown away)
+//   docker compose up  (the same, in containers: see docker-compose.yml)
 import fs from 'node:fs';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
@@ -11,7 +12,7 @@ import { fileURLToPath } from 'node:url';
 import { Buffer } from 'buffer';
 import * as bitcoin from 'bitcoinjs-lib';
 import { schnorr } from '@noble/curves/secp256k1.js';
-import { startRegtest } from '../test/lib/regtest.mjs';
+import { startRegtest, connectRegtest } from '../test/lib/regtest.mjs';
 import { launchCollection } from '../test/lib/launch.mjs';
 import { startPlatform } from '../services/platform/server.mjs';
 
@@ -23,8 +24,11 @@ const vkey = JSON.parse(fs.readFileSync(path.join(ROOT, 'zk/dev-ceremony/spend/v
 const newPriv = () => Buffer.from(schnorr.utils.randomSecretKey()).toString('hex');
 
 fs.rmSync(DATA, { recursive: true, force: true });
-console.log('starting bitcoind (regtest)…');
-const rt = await startRegtest(path.join(DATA, 'node'));
+// BITCOIN_RPC=http://user:pass@host:port uses a node that is already running (docker compose);
+// otherwise a throwaway bitcoind is started from PATH
+const rt = process.env.BITCOIN_RPC
+  ? (console.log(`using bitcoind at ${new URL(process.env.BITCOIN_RPC).host}…`), await connectRegtest(process.env.BITCOIN_RPC))
+  : (console.log('starting bitcoind (regtest)…'), await startRegtest(path.join(DATA, 'node')));
 const keys = { gatePriv: newPriv(), lockPriv: newPriv(), walletPriv: newPriv() };
 const L = await launchCollection(rt, { dir: DATA, supply: Number(process.env.SUPPLY ?? 48), name: 'Shielded Degents', keys, vkey });
 console.log(`collection launched: ${L.rulesInscriptionId}`);
@@ -56,7 +60,7 @@ setInterval(async () => {
 }, 3000).unref();
 
 const cfgFile = path.join(DATA, 'web-config.json');
-fs.writeFileSync(cfgFile, JSON.stringify({ network: 'regtest', platformUrl: `http://localhost:${PLATFORM_PORT}`, esploraUrl: null, artBase: 'platform', pieceName: 'Shielded Degent', pollMs: 2000 }, null, 2));
+fs.writeFileSync(cfgFile, JSON.stringify({ network: 'regtest', platformUrl: process.env.PUBLIC_PLATFORM_URL ?? `http://localhost:${PLATFORM_PORT}`, esploraUrl: null, artBase: 'platform', pieceName: 'Shielded Degent', pollMs: 2000 }, null, 2));
 const web = spawn(process.execPath, [path.join(ROOT, 'apps/web/build.mjs'), '--serve'], { env: { ...process.env, CONFIG: cfgFile, PORT: String(WEB_PORT) }, stdio: 'inherit' });
 
 const stop = async () => { web.kill(); await platform.close(); rt.stop(); process.exit(0); };

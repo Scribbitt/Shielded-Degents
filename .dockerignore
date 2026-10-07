@@ -1,0 +1,10 @@
+.git
+node_modules
+vendor/shielded-ordinals/node_modules
+vendor/shielded-ordinals/build
+apps/web/dist
+.regtest
+.ptau
+.cache*
+secrets
+*.tmp

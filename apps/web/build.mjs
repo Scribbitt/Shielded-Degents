@@ -15,10 +15,15 @@ const ZK_WASM = process.env.ZK_WASM ?? path.join(ROOT, 'vendor/shielded-ordinals
 const ZK_ZKEY = process.env.ZK_ZKEY ?? path.join(ROOT, 'zk/dev-ceremony/spend/final.zkey');
 
 fs.mkdirSync(path.join(DIST, 'zk'), { recursive: true });
+// in a container the config comes from the environment (WEB_NETWORK, PUBLIC_PLATFORM_URL, PUBLIC_ESPLORA_URL)
+const envConfig = process.env.WEB_NETWORK ? JSON.stringify({
+  network: process.env.WEB_NETWORK, platformUrl: process.env.PUBLIC_PLATFORM_URL, esploraUrl: process.env.PUBLIC_ESPLORA_URL || null,
+  artBase: 'platform', pieceName: 'Shielded Degent', pollMs: 15000,
+}, null, 2) : null;
 const copy = () => {
   fs.copyFileSync(path.join(HERE, 'index.html'), path.join(DIST, 'index.html'));
   fs.copyFileSync(path.join(HERE, 'styles.css'), path.join(DIST, 'styles.css'));
-  fs.copyFileSync(CONFIG, path.join(DIST, 'config.json'));
+  if (envConfig) fs.writeFileSync(path.join(DIST, 'config.json'), envConfig); else fs.copyFileSync(CONFIG, path.join(DIST, 'config.json'));
   fs.copyFileSync(ZK_WASM, path.join(DIST, 'zk/spend.wasm'));
   fs.copyFileSync(ZK_ZKEY, path.join(DIST, 'zk/spend.zkey'));
 };

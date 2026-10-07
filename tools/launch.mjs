@@ -1,11 +1,15 @@
 // Launch a Shielded Degents collection, step by step. Every step prints what it did and what is next;
-// nothing is broadcast by this tool. You broadcast the hex it prints (your node or mempool.space).
+// nothing is broadcast unless you run `broadcast` (or paste the printed hex into your node or mempool.space).
 //
 //   node tools/launch.mjs keys        --network mainnet --out secrets/
+//   node tools/launch.mjs placeholder-art --count 24 --out launch/signet/artist   (test art only)
 //   node tools/launch.mjs art         <artistDir> <outDir> --name "Shielded Degents"
-//   node tools/launch.mjs rules       --config launch/config.json --out launch/rules.json
+//   node tools/launch.mjs config      --network signet --secrets secrets/signet --art launch/signet/art --out launch/signet/config.json
+//   node tools/launch.mjs rules       --config launch/config.json --out launch/rules.json [--allow-dev-key]
 //   node tools/launch.mjs commit      --rules launch/rules.json --network mainnet --fee-rate 5 [--grandparent <id>]
 //   node tools/launch.mjs reveal      --plan launch/parent-plan.json --commit <txid>:<vout> [--grandparent-utxo <txid>:<vout>:<value> --grandparent-key <file>]
+//   node tools/launch.mjs broadcast   --api https://mempool.space/signet/api --hex <hex>
+//   node tools/launch.mjs confirmed   --api https://mempool.space/signet/api --txid <reveal txid>
 //   node tools/launch.mjs park        --network mainnet --parent <txid>:<vout>:<value> --wallet-key secrets/wallet.json --fee-coin <txid>:<vout>:<value> --fee-rate 5
 //
 // The parent's reveal sends the parent to the platform hot wallet (it carries it while children are
@@ -65,7 +69,10 @@ Put gate.xonly / lock.xonly in launch/config.json as gateKey / lockKey.`);
     const cfg = JSON.parse(fs.readFileSync(need('--config'), 'utf8'));
     const network = cfg.network ?? 'mainnet';
     const vkey = JSON.parse(fs.readFileSync(cfg.spendVkey, 'utf8'));
-    if (/dev-ceremony/.test(cfg.spendVkey) && network === 'mainnet') throw new Error('refusing the dev ceremony key on mainnet: run the public ceremony first (docs/LAUNCH.md)');
+    if (/dev-ceremony/.test(cfg.spendVkey) && network === 'mainnet') {
+      if (!rest.includes('--allow-dev-key')) throw new Error('refusing the dev ceremony key on mainnet: run the public ceremony first (docs/LAUNCH.md), or pass --allow-dev-key for a throwaway test collection');
+      console.warn('WARNING: mainnet rules pinned to the DEV proving key (one contributor). Fine for a throwaway test, never for the real collection.');
+    }
     const script = (v) => (/^[0-9a-f]{64}$/.test(v) ? p2trScriptHex(v, network) : hex.encode(btc.OutScript.encode(btc.Address(NETWORKS[network]).decode(v))));
     const rules = {
       p: 'shord', v: 1, name: cfg.name, supply: cfg.supply,
@@ -78,6 +85,56 @@ Put gate.xonly / lock.xonly in launch/config.json as gateKey / lockKey.`);
     const text = JSON.stringify(rules);
     fs.writeFileSync(need('--out'), text + '\n');
     console.log(`rules OK (${text.length} bytes), spendVkeyHash ${rules.spendVkeyHash}\nwritten to ${flag('--out')}. Read it once more: it can never change after the parent is inscribed.`);
+  },
+
+  async 'placeholder-art'() {
+    const { degentArt } = await import('../test/lib/launch.mjs');
+    const out = need('--out');
+    const count = Number(flag('--count', '24'));
+    fs.mkdirSync(path.join(out, 'images'), { recursive: true });
+    fs.mkdirSync(path.join(out, 'json'), { recursive: true });
+    for (let n = 1; n <= count; n++) {
+      fs.writeFileSync(path.join(out, 'images', `${n}.png`), degentArt(n - 1));
+      fs.writeFileSync(path.join(out, 'json', `${n}.json`), JSON.stringify([{ meta: { name: `Degent #${n}`, attributes: [{ trait_type: 'Placeholder', value: 'Pixel' }] } }]));
+    }
+    console.log(`${count} placeholder Degents in ${out} (test art only). Next: art ${out} <outDir> --name "Shielded Degents"`);
+  },
+
+  async config() {
+    const { artRoot, fileHash } = await import('../vendor/shielded-ordinals/src/v1/art.mjs');
+    const network = need('--network');
+    const secrets = need('--secrets');
+    const artDir = need('--art');
+    const files = fs.readdirSync(artDir).filter((f) => /^\d+\.png$/.test(f)).sort((a, b) => parseInt(a) - parseInt(b));
+    if (!files.length || parseInt(files.at(-1)) !== files.length - 1) throw new Error(`${artDir} must hold 0.png..N-1.png (the art step's output)`);
+    const x = (n) => xonlyOfPriv(readKey(path.join(secrets, `${n}.json`)));
+    const cfg = {
+      network, name: flag('--name', 'Shielded Degents'), supply: files.length,
+      artRoot: artRoot(files.map((f) => fileHash(fs.readFileSync(path.join(artDir, f))))).toString('hex'), contentType: 'image/png',
+      inscribeFee: Number(flag('--inscribe-fee', '3000')), mintPrice: Number(flag('--mint-price', '10000')), mintFee: Number(flag('--mint-fee', '1000')),
+      saleFeeBps: 250, saleFeeMin: 1000, ticketPrice: 1500,
+      artistPayout: flag('--artist', x('wallet')), platformPayout: flag('--platform', x('wallet')), relayerPayout: x('wallet'),
+      gateKey: x('gate'), lockKey: x('lock'), spendVkey: flag('--vkey', 'zk/dev-ceremony/spend/vkey.json'),
+    };
+    fs.writeFileSync(need('--out'), JSON.stringify(cfg, null, 2) + '\n');
+    console.log(JSON.stringify(cfg, null, 2) + `\n\nwritten to ${flag('--out')}. Edit prices / payouts if needed, then: rules --config ${flag('--out')} --out <rules.json>`);
+  },
+
+  async broadcast() {
+    const api = need('--api').replace(/\/+$/, '');
+    const r = await fetch(`${api}/tx`, { method: 'POST', body: need('--hex') });
+    const t = await r.text();
+    if (!r.ok) throw new Error('rejected: ' + t);
+    console.log(`broadcast ${t.trim()}`);
+  },
+
+  async confirmed() {
+    const api = need('--api').replace(/\/+$/, '');
+    const r = await fetch(`${api}/tx/${need('--txid')}/status`);
+    if (!r.ok) throw new Error(`lookup failed: ${r.status}`);
+    const s = await r.json();
+    if (!s.confirmed) return console.log('not confirmed yet (or mempool.space does not know this txid): try again after the next block');
+    console.log(`RULES_BLOCK=${s.block_hash}\nSTART_HEIGHT=${s.block_height}`);
   },
 
   commit() {
@@ -152,4 +209,4 @@ if (!commands[cmd]) {
   console.log(fs.readFileSync(fileURLToPath(import.meta.url), 'utf8').split('\n').filter((l) => l.startsWith('//')).map((l) => l.slice(3)).join('\n'));
   process.exit(cmd ? 1 : 0);
 }
-try { commands[cmd](); } catch (e) { console.error(e.message); process.exit(1); }
+try { await commands[cmd](); } catch (e) { console.error(e.message); process.exit(1); }

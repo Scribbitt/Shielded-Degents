@@ -1,0 +1,9 @@
+# Same pattern as xcp-api-mime: turns a GetBlock "shared" endpoint (token in the path) into a plain
+# host:port RPC the platform can use as BITCOIN_RPC. The token comes from GETBLOCK_TOKEN in the env
+# file, so it never lands in a committed file. GETBLOCK_SCHEME exists only for tests (default https).
+:80 {
+	rewrite * /{$GETBLOCK_TOKEN}
+	reverse_proxy {$GETBLOCK_SCHEME:https}://{$GETBLOCK_HOST} {
+		header_up Host {$GETBLOCK_HOST}
+	}
+}

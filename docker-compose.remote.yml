@@ -1,0 +1,62 @@
+# Shielded Degents on a real network without running a Bitcoin node.
+#   cp docker/signet.env.example docker/signet.env     (or mainnet), fill it in, then:
+#   docker compose -f docker-compose.remote.yml --env-file docker/signet.env up --build
+# Blocks: GetBlock through btc-proxy when BITCOIN_RPC=http://btc-proxy, else mempool.space.
+# Hot wallet (coins, fees, broadcast) and users' wallets: mempool.space (MEMPOOL_API).
+# Needs a launched collection first: docs/REMOTE.md.
+services:
+  btc-proxy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    environment:
+      GETBLOCK_HOST: ${GETBLOCK_HOST:-shared.eu-central-1.getblock.io}
+      GETBLOCK_TOKEN: ${GETBLOCK_TOKEN:-}
+    volumes:
+      - ./docker/btc-proxy.Caddyfile:/etc/caddy/Caddyfile:ro
+
+  platform:
+    build: { context: ., dockerfile: docker/stack.Dockerfile }
+    init: true
+    restart: unless-stopped
+    command: ["node", "services/platform/server.mjs"]
+    depends_on: [btc-proxy]
+    environment:
+      NETWORK: ${NETWORK:?set NETWORK in the env file}
+      BITCOIN_RPC: ${BITCOIN_RPC:-}
+      MEMPOOL_API: ${MEMPOOL_API:?set MEMPOOL_API in the env file}
+      RULES_INSCRIPTION_ID: ${RULES_INSCRIPTION_ID:?launch the collection first (docs/REMOTE.md)}
+      RULES_BLOCK: ${RULES_BLOCK:?}
+      START_HEIGHT: ${START_HEIGHT:?}
+      PARENT_OUTPOINT: ${PARENT_OUTPOINT:-}
+      SPEND_VKEY: ${SPEND_VKEY:-zk/dev-ceremony/spend/vkey.json}
+      GATE_KEY_FILE: /secrets/gate.json
+      LOCK_KEY_FILE: /secrets/lock.json
+      WALLET_KEY_FILE: /secrets/wallet.json
+      ART_DIR: /launch/art
+      STATE_FILE: /state/platform-state.json
+      CACHE_DIR: /state/cache
+      SYNC_MS: "15000"
+      BATCH_MS: ${BATCH_MS:-600000}
+      CORS_ORIGIN: ${CORS_ORIGIN:-*}
+    volumes:
+      - ${SECRETS_DIR:?}:/secrets:ro
+      - ${LAUNCH_DIR:?}:/launch:ro
+      - platform-state:/state
+    ports:
+      - "5030:5030"
+
+  web:
+    build: { context: ., dockerfile: docker/stack.Dockerfile }
+    init: true
+    restart: unless-stopped
+    command: ["node", "apps/web/build.mjs", "--serve"]
+    environment:
+      WEB_NETWORK: ${NETWORK}
+      PUBLIC_PLATFORM_URL: ${PUBLIC_PLATFORM_URL:-http://localhost:5030}
+      PUBLIC_ESPLORA_URL: ${MEMPOOL_API}
+      PORT: "8790"
+    ports:
+      - "8790:8790"
+
+volumes:
+  platform-state:

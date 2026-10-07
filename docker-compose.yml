@@ -1,0 +1,23 @@
+# Local dev stack in containers:  docker compose up --build
+#   web vault   http://localhost:8790   (create a vault, then Connect wallet -> Dev wallet)
+#   platform    http://localhost:5030/status
+# Regtest only. Each start launches a fresh collection; `docker compose down` throws the chain away.
+services:
+  bitcoind:
+    build: { context: ., dockerfile: docker/bitcoind.Dockerfile }
+    healthcheck:
+      test: ["CMD", "bitcoin-cli", "-regtest", "-rpcuser=dev", "-rpcpassword=dev", "getblockchaininfo"]
+      interval: 3s
+      retries: 20
+  stack:
+    build: { context: ., dockerfile: docker/stack.Dockerfile }
+    init: true
+    depends_on:
+      bitcoind: { condition: service_healthy }
+    environment:
+      BITCOIN_RPC: http://dev:dev@bitcoind:18443
+      PUBLIC_PLATFORM_URL: http://localhost:5030
+      SUPPLY: "48"
+    ports:
+      - "5030:5030"
+      - "8790:8790"
