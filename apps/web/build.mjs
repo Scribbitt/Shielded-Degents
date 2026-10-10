@@ -41,10 +41,20 @@ const options = {
 
 copy();
 if (process.argv.includes('--serve')) {
+  const http = await import('node:http');
+  const fsp = await import('node:fs/promises');
   const ctx = await esbuild.context({ ...options, plugins: [{ name: 'copy', setup: (b) => b.onEnd(copy) }] });
   await ctx.watch();
-  const { port } = await ctx.serve({ servedir: DIST, port: Number(process.env.PORT ?? 8790) });
-  console.log(`web vault on http://localhost:${port}`);
+  const MIME = { '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'text/css', '.html': 'text/html', '.json': 'application/json', '.wasm': 'application/wasm', '.map': 'application/json', '.zkey': 'application/octet-stream' };
+  const port = Number(process.env.PORT ?? 8790);
+  http.default.createServer(async (req, res) => {
+    let rel = new URL(req.url, 'http://x').pathname.replace(/^\//, '') || 'index.html';
+    let file = path.join(DIST, rel);
+    try { await fsp.access(file); } catch { file = path.join(DIST, 'index.html'); rel = 'index.html'; }
+    const ext = path.extname(rel);
+    res.writeHead(200, { 'content-type': MIME[ext] ?? 'application/octet-stream', 'access-control-allow-origin': '*' });
+    res.end(await fsp.readFile(file));
+  }).listen(port, '0.0.0.0', () => console.log(`web vault on http://localhost:${port}`));
 } else {
   await esbuild.build(options);
   console.log(`built ${DIST}`);

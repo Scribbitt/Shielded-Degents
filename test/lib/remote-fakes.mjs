@@ -11,7 +11,7 @@ const body = (req) => new Promise((ok) => { let b = ''; req.on('data', (d) => { 
 
 const REFUSED = /^(createwallet|loadwallet|listwallets|importdescriptors|listunspent|getnewaddress|sendtoaddress|gettransaction|scantxoutset|generatetoaddress|getdescriptorinfo)$/;
 
-export async function fakeGetBlock(rt, token = 'test-token-0123', host = '127.0.0.1') {
+export async function fakeGetBlock(rt, token = 'test-stub', host = '127.0.0.1') {
   const calls = new Map();
   const server = http.createServer(async (req, res) => {
     const send = (code, j) => { res.writeHead(code, { 'content-type': 'application/json' }); res.end(JSON.stringify(j)); };

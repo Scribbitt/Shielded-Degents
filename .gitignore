@@ -11,3 +11,5 @@ secrets/
 apps/web/dist/
 docker/*.env
 launch/
+!launch/signet/art/
+!launch/signet/art.json
