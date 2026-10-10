@@ -25,7 +25,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import { Buffer } from 'buffer';
 import * as bitcoin from 'bitcoinjs-lib';
-import { follower, loadRules, makeSource } from '../../vendor/shielded-ordinals/src/v1/follow.mjs';
+import { follower, loadRules, makeSource, makeRpc } from '../../vendor/shielded-ordinals/src/v1/follow.mjs';
 import { exportState } from '../../vendor/shielded-ordinals/src/v1/view.mjs';
 import { collectionId, saleFee, vkeyHash } from '../../vendor/shielded-ordinals/src/v1/rules.mjs';
 import { parseEnvelope, T } from '../../vendor/shielded-ordinals/src/v1/envelope.mjs';
@@ -87,7 +87,8 @@ export async function startPlatform(cfg = {}) {
   const chain = follower({ network: c.network, source, cacheDir: c.cacheDir, rulesInscriptionId: c.rulesInscriptionId, rules, vkey: c.spendVkey, startHeight: c.startHeight });
   // blocks come from BITCOIN_RPC when set (your node, or a hosted node through btc-proxy), else the API;
   // the hot wallet's coins + broadcast use the API when set: hosted nodes refuse wallet calls
-  const io = chainIO(c.api ? { api: c.api } : { rpc: c.rpc, rpcCookie: c.rpcCookie });
+  const walletViaRpc = c.rpc && (!c.api || process.env.WALLET_VIA_RPC === 'true');
+  const io = chainIO(walletViaRpc ? { rpc: c.rpc, rpcCookie: c.rpcCookie } : { api: c.api });
   const signer = new PlatformSigner({ rules, network: NET, gatePriv: c.gatePriv, lockPriv: c.lockPriv });
   const wallet = new HotWallet({ priv: c.walletPriv, network: NET, io });
   if (saved.parent) wallet.protected.add(`${saved.parent.txid}:${saved.parent.vout}`);
@@ -185,6 +186,23 @@ export async function startPlatform(cfg = {}) {
     'POST /cancel': async (_q, body) => cancel(body.claimHex),
     'POST /relay': async (_q, body) => relay.submit(await fresh(), body.envelopeHex),
   };
+  if (c.network !== 'mainnet' && c.rpc) {
+    const rpcNode = makeRpc(c.rpc, c.rpcCookie);
+    routes['GET /dev/utxos'] = async (q) => {
+      const address = q.get('address');
+      const r = await rpcNode('scantxoutset', 'start', [`addr(${address})`]);
+      return { utxos: r.unspents.map((u) => ({ txid: u.txid, vout: u.vout, value: Math.round(u.amount * 1e8) })) };
+    };
+    routes['POST /dev/faucet'] = async (_q, body) => {
+      const faucetWallet = process.env.FAUCET_WALLET;
+      if (!faucetWallet) throw Object.assign(new Error('FAUCET_WALLET not set'), { status: 501 });
+      const walletRpc = makeRpc(`${c.rpc.replace(/\/$/, '')}/wallet/${faucetWallet}`, c.rpcCookie);
+      const sats = Math.min(Number(body.sats ?? 1_000_000), 10_000_000);
+      // pass fee_rate=1 sat/vB explicitly — node may lack fee estimates on a fresh chain
+      const txid = await walletRpc('sendtoaddress', body.address, sats / 1e8, '', '', false, null, null, 'unset', null, 1);
+      return { txid, sats };
+    };
+  }
 
   const send = (res, code, body) => {
     res.writeHead(code, { 'content-type': 'application/json', 'access-control-allow-origin': c.cors, 'cache-control': 'no-store' });

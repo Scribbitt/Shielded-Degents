@@ -314,20 +314,24 @@ async function withdraw() {
 
 // ─── market ──────────────────────────────────────────────────────────────────────────────────
 function marketView() {
-  const list = app.client.market(app.vault).sort((a, b) => Number(BigInt(a.price) - BigInt(b.price)));
+  const mine = app.vault ? new Set(app.client.view(app.vault).listings.map((l) => l.nf)) : new Set();
+  const list = app.client.market(null).sort((a, b) => Number(BigInt(a.price) - BigInt(b.price)));
   return el('section', { class: 'panel' },
     el('h2', {}, 'Market'),
     el('p', { class: 'muted' }, 'Listed pieces. Buying puts the piece straight into your shielded vault.'),
     list.length === 0 ? el('p', { class: 'empty muted' }, 'Nothing listed right now.') :
       el('div', { class: 'grid' }, list.map((l) => {
         const fee = saleFee(app.client.rules, BigInt(l.price));
+        const isOwn = mine.has(l.nf);
         return el('article', { class: 'piece' },
           el('img', { src: artUrl(l.assetId), alt: pieceName(l.assetId), loading: 'lazy', width: 240, height: 240 }),
           el('div', { class: 'piece-body' },
             el('h4', {}, pieceName(l.assetId)),
             el('p', { class: 'mono' }, btc(l.price)),
             el('p', { class: 'muted small' }, `+ ${sats(fee)} fee · ${l.tickets} ticket${l.tickets === 1 ? '' : 's'}`),
-            el('button', { class: 'btn primary small', onclick: () => buy(l) }, 'Buy')));
+            isOwn
+              ? el('p', { class: 'muted small' }, 'Your listing')
+              : el('button', { class: 'btn primary small', onclick: () => buy(l) }, 'Buy')));
       })));
 }
 
@@ -374,7 +378,7 @@ function connectDialog() {
         d.close(); d.remove();
         await run(`Connecting ${w.label}…`, async () => {
           app.payer = await w.connect();
-          if (app.cfg.network === 'regtest' && w.id === 'dev') await devTopUp();
+          if ((app.cfg.network === 'regtest' || app.cfg.network === 'signet') && w.id === 'dev') await devTopUp();
         });
       },
     }, w.label, w.installed && !w.installed() ? el('span', { class: 'muted small' }, ' (not installed)') : null))),

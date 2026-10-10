@@ -72,8 +72,8 @@ function devWallet(network, utxos) {
 /** The wallets this page can offer on `networkName`. utxos(address) -> [{ txid, vout, value }]. */
 export function availableWallets(networkName, network, utxos) {
   const list = [];
-  if (networkName === 'regtest') list.push({ id: 'dev', label: 'Dev wallet (regtest)', connect: devWallet(network, utxos) });
-  else {
+  if (networkName === 'regtest' || networkName === 'signet') list.push({ id: 'dev', label: 'Dev wallet', connect: devWallet(network, utxos) });
+  if (networkName !== 'regtest') {
     list.push({ id: 'unisat', label: 'Unisat', installed: () => !!globalThis.unisat, connect: unisatLike('Unisat', () => globalThis.unisat, network, utxos) });
     list.push({ id: 'okx', label: 'OKX Wallet', installed: () => !!globalThis.okxwallet?.bitcoin, connect: unisatLike('OKX', () => globalThis.okxwallet?.bitcoin, network, utxos) });
     list.push({ id: 'xverse', label: 'Xverse', installed: () => !!globalThis.XverseProviders, connect: xverse(network, utxos) });
