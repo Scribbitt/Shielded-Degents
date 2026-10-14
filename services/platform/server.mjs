@@ -196,19 +196,27 @@ export async function startPlatform(cfg = {}) {
       try { bitcoin.address.toOutputScript(address, NET); } catch { throw bad('not a valid address for this network'); }
       return address;
     };
+    // bech32 takes either case, so per-address limits key on the output script, not the string
+    const keyOf = (address) => bitcoin.address.toOutputScript(address, NET).toString('hex');
     // scantxoutset locks the node while it scans the whole UTXO set: one scan per address every few seconds
     const scanned = new Map();
     routes['GET /dev/utxos'] = async (q) => {
       const address = checkAddress(q.get('address'));
-      if (Date.now() - (scanned.get(address) ?? 0) < 2_000) throw bad('slow down', 429);
-      scanned.set(address, Date.now());
+      const key = keyOf(address);
+      if (Date.now() - (scanned.get(key) ?? 0) < 2_000) throw bad('slow down', 429);
+      scanned.set(key, Date.now());
       if (scanned.size > 1000) for (const [a, t] of scanned) if (Date.now() - t > 60_000) scanned.delete(a);
       const r = await rpcNode('scantxoutset', 'start', [`addr(${address})`]);
       return { utxos: (r?.unspents ?? []).map((u) => ({ txid: u.txid, vout: u.vout, value: Math.round(u.amount * 1e8) })) };
     };
     // public networks: one drip per address per FAUCET_COOLDOWN_MS, and a global cap per hour (regtest is unlimited unless faucetLimit is set)
-    const cooldownMs = Number(env('FAUCET_COOLDOWN_MS', '3600000'));
-    const hourlyCap = Number(env('FAUCET_HOURLY_SATS', '50000000'));
+    const limit = (k, d) => {
+      const n = Number(env(k, d));
+      if (!Number.isFinite(n) || n < 0) throw new Error(`${k} must be a non-negative number, got ${JSON.stringify(process.env[k])}`);
+      return n;
+    };
+    const cooldownMs = limit('FAUCET_COOLDOWN_MS', '3600000');
+    const hourlyCap = limit('FAUCET_HOURLY_SATS', '50000000');
     const dripped = new Map();
     const hour = [];
     routes['POST /dev/faucet'] = async (_q, body) => {
@@ -218,18 +226,29 @@ export async function startPlatform(cfg = {}) {
       const want = body?.sats ?? 1_000_000;
       if (!Number.isInteger(want) || want < 1000) throw bad('sats must be an integer of at least 1000');
       const sats = Math.min(want, 10_000_000);
+      const key = keyOf(address);
+      const drip = { at: Date.now(), sats };
       if (c.faucetLimit) {
         const now = Date.now();
         while (hour.length && now - hour[0].at > 3_600_000) hour.shift();
-        if (now - (dripped.get(address) ?? 0) < cooldownMs) throw bad('this address already got coins recently', 429);
+        if (now - (dripped.get(key)?.at ?? 0) < cooldownMs) throw bad('this address already got coins recently', 429);
         if (hour.reduce((n, d) => n + d.sats, 0) + sats > hourlyCap) throw bad('the faucet is dry for now, try later', 429);
-        dripped.set(address, now);
-        hour.push({ at: now, sats });
+        dripped.set(key, drip);
+        hour.push(drip);
       }
       const walletRpc = makeRpc(`${c.rpc.replace(/\/$/, '')}/wallet/${encodeURIComponent(faucetWallet)}`, c.rpcCookie);
       // pass fee_rate=1 sat/vB explicitly — node may lack fee estimates on a fresh chain
       let txid;
-      try { txid = await walletRpc('sendtoaddress', address, sats / 1e8, '', '', false, null, null, 'unset', null, 1); } catch (e) { dripped.delete(address); hour.pop(); throw e; }
+      try { txid = await walletRpc('sendtoaddress', address, sats / 1e8, '', '', false, null, null, 'unset', null, 1); } catch (e) {
+        // give the allowance back only when the node answered with a refusal: after a timeout or a dropped
+        // connection the coins may have gone out. Undo this request's own entries, not whichever came last.
+        if (/^bitcoin node, sendtoaddress: (?!HTTP \d+$)/.test(e.message)) {
+          if (dripped.get(key) === drip) dripped.delete(key);
+          const i = hour.indexOf(drip);
+          if (i !== -1) hour.splice(i, 1);
+        }
+        throw e;
+      }
       return { txid, sats };
     };
   }
@@ -259,7 +278,9 @@ export async function startPlatform(cfg = {}) {
       return p.then((b) => send(res, 200, b), (e) => send(res, 404, { error: e.message }));
     }
     if (req.method === 'GET' && relayId) { const s = relay.status(relayId[1]); return s ? send(res, 200, s) : send(res, 404, { error: 'unknown relay id' }); }
-    const handler = c.extraRoutes[`${req.method} ${url.pathname}`] ?? routes[`${req.method} ${url.pathname}`]; // a host's own routes win
+    const key = `${req.method} ${url.pathname}`;
+    // a host may replace the dev helpers (dev-stack funds from its own regtest node), never the core routes
+    const handler = url.pathname.startsWith('/dev/') ? (c.extraRoutes[key] ?? routes[key]) : (routes[key] ?? c.extraRoutes[key]);
     if (!handler) return send(res, 404, { error: 'not found' });
     let raw = '';
     req.on('data', (d) => { raw += d; if (raw.length > 2_000_000) req.destroy(); });

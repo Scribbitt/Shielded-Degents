@@ -53,6 +53,8 @@ try {
   const again = await utxos(open, addr);
   assert.equal(again.status, 429);
   ok('a second scan of the same address within 2 s is a 429');
+  assert.equal((await utxos(open, addr.toUpperCase())).status, 429);
+  ok('the same address in upper case is the same address for the throttle');
   const coin = await rt.fund(bitcoin.address.toOutputScript(addr, rt.NET), 123_456);
   await rt.mine();
   await new Promise((r) => setTimeout(r, 2100));
@@ -96,6 +98,8 @@ try {
   const second = await faucet(limited, { address: a, sats: 2_000_000 });
   assert.equal(second.status, 429);
   ok('a second drip to the same address is a 429');
+  assert.equal((await faucet(limited, { address: a.toUpperCase(), sats: 2_000_000 })).status, 429);
+  ok('the same address in upper case does not get a second drip');
   assert.equal((await faucet(limited, { address: b, sats: 2_000_000 })).status, 200);
   ok('a different address still gets coins');
   await rt.mine();
@@ -112,6 +116,26 @@ try {
   assert.equal((await faucet(tight, { address: freshAddress(), sats: 1_000_000 })).status, 200);
   ok('the hourly cap refuses a drip that would pass it, and a smaller one still fits');
   await tight.close?.();
+
+  step('startup: limits that are not numbers are refused');
+  for (const [k, v] of [['FAUCET_HOURLY_SATS', '50_000_000'], ['FAUCET_COOLDOWN_MS', 'soon'], ['FAUCET_COOLDOWN_MS', '-1']]) {
+    process.env[k] = v;
+    await assert.rejects(start(`bad-${k}`, { faucetLimit: true }), new RegExp(k));
+    delete process.env[k];
+  }
+  ok('a NaN or negative FAUCET_* setting stops the platform instead of turning the limit off');
+
+  step('extraRoutes: dev helpers can be replaced, core routes cannot');
+  const host = await start('host', { extraRoutes: {
+    'GET /dev/utxos': async () => ({ utxos: 'host' }),
+    'GET /fees': async () => ({ feeRate: 'host' }),
+    'GET /dev/extra': async () => ({ extra: true }),
+  } });
+  assert.equal((await utxos(host, freshAddress())).body.utxos, 'host');
+  assert.notEqual((await call(host, 'GET', '/fees')).body.feeRate, 'host');
+  assert.deepEqual((await call(host, 'GET', '/dev/extra')).body, { extra: true });
+  ok("a host's /dev/* route wins, a core route keeps the platform's handler, new routes still work");
+  await host.close?.();
 
   console.log('\nALL DEV ROUTE CHECKS PASSED');
 } finally {
