@@ -15,7 +15,7 @@ const port = 18900 + Math.floor(Math.random() * 90);
 const name = `sd-proxy-check-${port}`;
 const docker = (...a) => execFileSync('docker', a, { stdio: ['ignore', 'pipe', 'pipe'] }).toString().trim();
 try {
-  docker('run', '-d', '--name', name, '-p', `${port}:80`, '-e', 'GETBLOCK_SCHEME=http', '-e', `GETBLOCK_HOST=host.docker.internal:${gb.port}`,
+  docker('run', '-d', '--name', name, '--add-host', 'host.docker.internal:host-gateway', '-p', `${port}:80`, '-e', 'GETBLOCK_SCHEME=http', '-e', `GETBLOCK_HOST=host.docker.internal:${gb.port}`,
     '-e', `GETBLOCK_TOKEN=${gb.token}`, '-v', `${path.join(ROOT, 'docker/btc-proxy.Caddyfile')}:/etc/caddy/Caddyfile:ro`, 'caddy:2-alpine');
   const rpc = makeRpc(`http://127.0.0.1:${port}`);
   let height;

@@ -33,14 +33,19 @@ const keys = { gatePriv: newPriv(), lockPriv: newPriv(), walletPriv: newPriv() }
 const L = await launchCollection(rt, { dir: DATA, supply: Number(process.env.SUPPLY ?? 48), name: 'Shielded Degents', keys, vkey });
 console.log(`collection launched: ${L.rulesInscriptionId}`);
 
+// same input checks as the platform's own dev routes: a bad address is a 400, not a 500 or `addr(null)`
+const scriptOf = (address) => {
+  try { return bitcoin.address.toOutputScript(address, rt.NET); } catch { throw Object.assign(new Error('not a valid address for this network'), { status: 400 }); }
+};
 const dev = {
   'POST /dev/faucet': async (_q, body) => {
-    const script = bitcoin.address.toOutputScript(body.address, rt.NET);
+    const script = scriptOf(body?.address);
     const coin = await rt.fund(script, Math.min(Number(body.sats ?? 1_000_000), 100_000_000));
     await rt.mine();
     return coin;
   },
   'GET /dev/utxos': async (q) => {
+    scriptOf(q.get('address'));
     const r = await rt.node('scantxoutset', 'start', [`addr(${q.get('address')})`]);
     return { utxos: r.unspents.map((u) => ({ txid: u.txid, vout: u.vout, value: Math.round(u.amount * 1e8) })) };
   },
