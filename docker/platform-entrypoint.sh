@@ -3,7 +3,7 @@
 # *_KEY_JSON env values (Coolify secrets) and are written to the files the
 # server reads through *_KEY_FILE (default /secrets/<name>.json); state
 # lives under /state. *_KEY_HEX or a mounted *_KEY_FILE work too.
-set -e
+set -ef   # -f: no globbing of operator-supplied paths
 trim() { printf '%s' "$1" | tr -d '\n\r' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//'; }
 # Trim first, then default (the server's env() treats blank as unset).
 v=$(trim "${GATE_KEY_FILE:-}");   export GATE_KEY_FILE="${v:-/secrets/gate.json}"
@@ -26,10 +26,13 @@ valid_key_file() {
 # the server's JSON.parse error would quote part of a malformed key.
 # `~` and relative *_KEY_FILE paths are refused (the server would expand ~).
 staged=""
+used=" "
 trap 'for t in $staged; do rm -f "$t"; done' EXIT
+trap 'exit 143' INT TERM
 stage_key() {
   eval "json=\${${1}_KEY_JSON:-} hex=\${${1}_KEY_HEX:-} file=\${${1}_KEY_FILE}"
-  hex=$(trim "$hex")
+  # Ends only (as the server's .trim()); inner whitespace is refused below.
+  hex=$(printf '%s' "$hex" | awk 'BEGIN{RS="\001"} {sub(/^[ \t\r\n]+/,""); sub(/[ \t\r\n]+$/,""); printf "%s", $0}')
   if [ -n "$hex" ]; then
     case "$hex" in
       *[!0-9a-fA-F]*) bad=1 ;;
@@ -46,6 +49,10 @@ stage_key() {
     /*) ;;
     *) echo "platform-entrypoint: ${1}_KEY_FILE must be an absolute path" >&2; exit 64 ;;
   esac
+  case "$used" in
+    *" $file "*) echo "platform-entrypoint: ${1}_KEY_FILE is the same file as another key's" >&2; exit 64 ;;
+  esac
+  used="$used$file "
   if [ -e "$file" ] && [ ! -f "$file" ]; then
     echo "platform-entrypoint: ${1}_KEY_FILE is not a regular file" >&2
     exit 64
