@@ -17,14 +17,19 @@ valid_key_file() {
   node -e 'try{const o=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));if(typeof o.priv!=="string"||!/^[0-9a-f]{64}$/i.test(o.priv))throw 0}catch(e){process.exit(1)}' "$1" 2>/dev/null
 }
 
-# write_key <NAME>, in the server's order (services/platform/server.mjs
-# `secret`): <NAME>_KEY_HEX wins; else <NAME>_KEY_JSON replaces
-# $<NAME>_KEY_FILE (0600, atomically, only once it is valid); else an
-# existing $<NAME>_KEY_FILE is used. Every refusal names the variable only:
+# stage_key <NAME>, in the server's order (services/platform/server.mjs
+# `secret`): <NAME>_KEY_HEX wins; else <NAME>_KEY_JSON is staged in a temp
+# file (0600) next to $<NAME>_KEY_FILE and checked; else an existing
+# $<NAME>_KEY_FILE is checked and used. Nothing is replaced until all three
+# keys pass (commit below). The Coolify secret is the source of truth: a
+# valid *_KEY_JSON replaces the file. Every refusal names the variable only:
 # the server's JSON.parse error would quote part of a malformed key.
-write_key() {
+# `~` and relative *_KEY_FILE paths are refused (the server would expand ~).
+staged=""
+trap 'for t in $staged; do rm -f "$t"; done' EXIT
+stage_key() {
   eval "json=\${${1}_KEY_JSON:-} hex=\${${1}_KEY_HEX:-} file=\${${1}_KEY_FILE}"
-  hex=$(printf '%s' "$hex" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
+  hex=$(trim "$hex")
   if [ -n "$hex" ]; then
     case "$hex" in
       *[!0-9a-fA-F]*) bad=1 ;;
@@ -37,20 +42,24 @@ write_key() {
     return 0
   fi
   case "$file" in
+    *[[:space:]]*) echo "platform-entrypoint: ${1}_KEY_FILE must not contain whitespace" >&2; exit 64 ;;
     /*) ;;
     *) echo "platform-entrypoint: ${1}_KEY_FILE must be an absolute path" >&2; exit 64 ;;
   esac
-  if [ -n "$json" ]; then
+  if [ -e "$file" ] && [ ! -f "$file" ]; then
+    echo "platform-entrypoint: ${1}_KEY_FILE is not a regular file" >&2
+    exit 64
+  fi
+  if [ -n "$(trim "$json")" ]; then
     (umask 077; mkdir -p "$(dirname "$file")")
     tmp="$file.tmp.$$"
+    staged="$staged $tmp"
     (umask 077; printf '%s' "$json" > "$tmp")
+    chmod 600 "$tmp"
     if ! valid_key_file "$tmp"; then
-      rm -f "$tmp"
       echo "platform-entrypoint: ${1}_KEY_JSON is not {\"priv\":\"<64 hex>\"}" >&2
       exit 64
     fi
-    chmod 600 "$tmp"
-    mv -f "$tmp" "$file"
     return 0
   fi
   if [ -f "$file" ]; then
@@ -63,9 +72,15 @@ write_key() {
   echo "platform-entrypoint: none of ${1}_KEY_HEX, ${1}_KEY_JSON, ${1}_KEY_FILE is set" >&2
   exit 64
 }
-write_key GATE
-write_key LOCK
-write_key WALLET
+stage_key GATE
+stage_key LOCK
+stage_key WALLET
+# All three passed: replace the files (same directory, so each is a rename).
+for t in $staged; do
+  sync "$t" 2>/dev/null || sync
+  mv -f "$t" "${t%.tmp.*}"
+done
+staged=""
 unset json hex file tmp bad v
 # Written to disk: the JSON copies leave the server process's environment
 # (the container's configured env, docker inspect, still has them).
