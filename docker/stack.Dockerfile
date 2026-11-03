@@ -1,5 +1,5 @@
 # The Shielded Degents dev stack: launches a collection on the regtest node, then runs the platform
-# service (:5030) and the web vault (:8790).
+# service (:5030) and the web vault (:8790). Set APP_ROLE=platform or APP_ROLE=web to run one of those alone.
 FROM node:22-bookworm-slim
 WORKDIR /app
 COPY package.json package-lock.json ./
@@ -9,4 +9,5 @@ COPY . .
 # compile the circuits (the proving key itself is the committed dev ceremony in zk/dev-ceremony)
 RUN cd vendor/shielded-ordinals && mkdir -p build && npx circom2 circuits/spend.circom --r1cs --wasm -o build
 EXPOSE 5030 8790
-CMD ["node", "scripts/dev-stack.mjs"]
+# APP_ROLE=platform|web|dev (default dev) picks the process: docker/start.sh
+CMD ["sh", "docker/start.sh"]
