@@ -28,7 +28,8 @@ valid_key_file() {
 staged=""
 used=" "
 trap 'for t in $staged; do rm -f "$t"; done' EXIT
-trap 'exit 143' INT TERM
+trap 'exit 130' INT
+trap 'exit 143' TERM
 stage_key() {
   eval "json=\${${1}_KEY_JSON:-} hex=\${${1}_KEY_HEX:-} file=\${${1}_KEY_FILE}"
   # Ends only (as the server's .trim()); inner whitespace is refused below.
@@ -49,6 +50,8 @@ stage_key() {
     /*) ;;
     *) echo "platform-entrypoint: ${1}_KEY_FILE must be an absolute path" >&2; exit 64 ;;
   esac
+  # Canonical form, so /a//k.json, /a/./k.json or a symlink count as the same file.
+  file=$(realpath -m -- "$file")
   case "$used" in
     *" $file "*) echo "platform-entrypoint: ${1}_KEY_FILE is the same file as another key's" >&2; exit 64 ;;
   esac
